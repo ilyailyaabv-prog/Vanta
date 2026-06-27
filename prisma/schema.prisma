@@ -1,0 +1,733 @@
+// ─────────────────────────────────────────────────────────────
+// Vanta — Prisma Schema (PostgreSQL)
+// Generated from docs/DATABASE_DESIGN.md v1.0.0
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, pg_trgm]
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum UserRole {
+  user
+  moderator
+  admin
+  superadmin
+}
+
+enum AssetType {
+  THUMBNAIL
+  PREVIEW
+  VIDEO_SOURCE
+  HLS_PLAYLIST
+  HLS_SEGMENT
+}
+
+enum VideoStatus {
+  draft
+  processing
+  published
+  archived
+  rejected
+}
+
+enum AccessLevel {
+  public
+  unlisted
+  private
+  premium
+}
+
+enum AdType {
+  pre_roll
+  mid_roll
+  post_roll
+  banner
+  overlay
+}
+
+enum AdStatus {
+  active
+  paused
+  completed
+  cancelled
+}
+
+enum ReportReason {
+  copyright
+  explicit
+  spam
+  harassment
+  other
+}
+
+enum ReportStatus {
+  pending
+  reviewed
+  dismissed
+  actioned
+}
+
+enum ModeratorActionType {
+  approve
+  reject
+  delete
+  warn
+  suspend
+  ban
+  unban
+  feature
+  unfeature
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.1  User
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique @db.VarChar(255)
+  emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz()
+  passwordHash     String    @map("password_hash") @db.VarChar(255)
+  role             UserRole  @default(user)
+  isActive         Boolean   @default(true) @map("is_active")
+  isBanned         Boolean   @default(false) @map("is_banned")
+  bannedAt         DateTime? @map("banned_at") @db.Timestamptz()
+  banReason        String?   @map("ban_reason") @db.Text
+  lastLoginAt      DateTime? @map("last_login_at") @db.Timestamptz()
+  locale           String    @default("en") @db.VarChar(10)
+  themePreference  String    @default("dark") @map("theme_preference") @db.VarChar(10)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  profile           UserProfile?
+  uploadedVideos    Video[]           @relation("VideoUploader")
+  videoViews        VideoView[]
+  searchQueries     SearchQuery[]
+  reports           Report[]          @relation("Reporter")
+  favorites         Favorite[]
+  watchHistory      WatchHistory[]
+  moderatorActions  ModeratorAction[] @relation("Moderator")
+  affectedByActions ModeratorAction[] @relation("AffectedUser")
+  activityLogs      ActivityLog[]
+
+  // ── Indexes ──
+  @@index([role], map: "idx_user_role")
+  @@index([isActive], map: "idx_user_is_active")
+  @@map("user")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.2  UserProfile
+// ─────────────────────────────────────────────────────────────
+
+model UserProfile {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  username     String   @unique @db.VarChar(50)
+  displayName  String?  @map("display_name") @db.VarChar(100)
+  bio          String?  @db.Text
+  avatarUrl    String?  @map("avatar_url") @db.VarChar(500)
+  bannerUrl    String?  @map("banner_url") @db.VarChar(500)
+  birthDate    DateTime? @map("birth_date") @db.Date
+  countryCode  String?  @map("country_code") @db.Char(2)
+  websiteUrl   String?  @map("website_url") @db.VarChar(500)
+  socialLinks  Json?    @map("social_links") @db.JsonB
+  isPublic     Boolean  @default(true) @map("is_public")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ── Indexes ──
+  @@index([username], map: "idx_user_profile_username")
+  @@map("user_profile")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.3  Video
+// ─────────────────────────────────────────────────────────────
+
+model Video {
+  id                 String       @id @default(uuid()) @db.Uuid
+  title              String       @db.VarChar(255)
+  slug               String       @unique @db.VarChar(300)
+  description        String?      @db.Text
+  durationSeconds    Int          @map("duration_seconds")
+  status             VideoStatus  @default(processing)
+  accessLevel        AccessLevel  @default(public) @map("access_level")
+  storageKey         String       @map("storage_key") @db.VarChar(500)
+  hlsPlaylistUrl     String?      @map("hls_playlist_url") @db.VarChar(500)
+  thumbnailUrl       String?      @map("thumbnail_url") @db.VarChar(500)
+  thumbnailBlurHash  String?      @map("thumbnail_blur_hash") @db.VarChar(50)
+  posterUrl          String?      @map("poster_url") @db.VarChar(500)
+  fileSizeBytes      BigInt       @map("file_size_bytes")
+  originalFilename   String?      @map("original_filename") @db.VarChar(500)
+  mimeType           String       @default("video/mp4") @map("mime_type") @db.VarChar(50)
+  width              Int?
+  height             Int?
+  fps                Decimal?     @db.Decimal(5, 2)
+  bitrateKbps        Int?         @map("bitrate_kbps")
+  hasAudio           Boolean      @default(true) @map("has_audio")
+  isHardcore         Boolean      @default(false) @map("is_hardcore")
+  isFeatured         Boolean      @default(false) @map("is_featured")
+  viewCount          Int          @default(0) @map("view_count")
+  likeCount          Int          @default(0) @map("like_count")
+  dislikeCount       Int          @default(0) @map("dislike_count")
+  favoriteCount      Int          @default(0) @map("favorite_count")
+  commentCount       Int          @default(0) @map("comment_count")
+  avgRating          Decimal      @default(0) @map("avg_rating") @db.Decimal(3, 2)
+  ratingCount        Int          @default(0) @map("rating_count")
+  uploadedByUserId   String?      @map("uploaded_by_user_id") @db.Uuid
+  publishedAt        DateTime?    @map("published_at") @db.Timestamptz()
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  uploader          User?              @relation("VideoUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  videoTags         VideoTag[]
+  videoModels       VideoModel[]
+  videoViews        VideoView[]
+  advertisements    Advertisement[]
+  reports           Report[]
+  favorites         Favorite[]
+  watchHistory      WatchHistory[]
+  moderatorActions  ModeratorAction[]
+  mediaAssets       MediaAsset[]
+  collectionVideos  CollectionVideo[]
+
+  // ── Indexes ──
+  @@index([status, publishedAt(sort: Desc)], map: "idx_video_status_published_at")
+  @@index([accessLevel], map: "idx_video_access_level")
+  @@index([publishedAt(sort: Desc)], map: "idx_video_published_at")
+  @@index([viewCount(sort: Desc)], map: "idx_video_view_count")
+  @@index([avgRating(sort: Desc)], map: "idx_video_avg_rating")
+  @@index([isFeatured], map: "idx_video_featured")
+  @@index([uploadedByUserId], map: "idx_video_uploader")
+  // B-tree index for title searches
+  @@index([title], map: "idx_video_title")
+  @@map("video")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.4  Model
+// ─────────────────────────────────────────────────────────────
+
+model Model {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @db.VarChar(200)
+  slug          String   @unique @db.VarChar(250)
+  bio           String?  @db.Text
+  avatarUrl     String?  @map("avatar_url") @db.VarChar(500)
+  bannerUrl     String?  @map("banner_url") @db.VarChar(500)
+  gender        String?  @db.VarChar(10)
+  birthDate     DateTime? @map("birth_date") @db.Date
+  countryCode   String?  @map("country_code") @db.Char(2)
+  heightCm      Int?     @map("height_cm")
+  measurements  String?  @db.VarChar(50)
+  ethnicity     String?  @db.VarChar(50)
+  hairColor     String?  @map("hair_color") @db.VarChar(30)
+  eyeColor      String?  @map("eye_color") @db.VarChar(30)
+  isActive      Boolean  @default(true) @map("is_active")
+  isVerified    Boolean  @default(false) @map("is_verified")
+  featuredUntil DateTime? @map("featured_until") @db.Timestamptz()
+  videoCount    Int      @default(0) @map("video_count")
+  totalViews    BigInt   @default(0) @map("total_views")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  aliases           ModelAlias[]
+  videoModels       VideoModel[]
+  collectionModels  CollectionModel[]
+
+  // ── Indexes ──
+  @@index([isActive, isVerified], map: "idx_model_is_active_verified")
+  @@index([totalViews(sort: Desc)], map: "idx_model_total_views")
+  @@index([featuredUntil], map: "idx_model_featured_until")
+  @@index([name], map: "idx_model_name")
+  @@map("model")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.5  ModelAlias
+// ─────────────────────────────────────────────────────────────
+
+model ModelAlias {
+  id        String   @id @default(uuid()) @db.Uuid
+  modelId   String   @map("model_id") @db.Uuid
+  alias     String   @db.VarChar(200)
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  model Model @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  // ── Indexes ──
+  @@index([modelId], map: "idx_model_alias_model_id")
+  @@index([alias], map: "idx_model_alias_alias")
+  @@map("model_alias")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.6  TagGroup
+// ─────────────────────────────────────────────────────────────
+
+model TagGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  slug        String   @unique @db.VarChar(120)
+  description String?  @db.Text
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tags Tag[]
+
+  // ── Indexes ──
+  @@index([sortOrder], map: "idx_tag_group_sort_order")
+  @@map("tag_group")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.7  Tag
+// ─────────────────────────────────────────────────────────────
+
+model Tag {
+  id          String   @id @default(uuid()) @db.Uuid
+  tagGroupId  String   @map("tag_group_id") @db.Uuid
+  name        String   @db.VarChar(100)
+  slug        String   @unique @db.VarChar(120)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  videoCount  Int      @default(0) @map("video_count")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tagGroup  TagGroup   @relation(fields: [tagGroupId], references: [id], onDelete: Restrict)
+  videoTags VideoTag[]
+
+  // ── Constraints ──
+  @@unique([tagGroupId, name], name: "uq_tag_group_name")
+
+  // ── Indexes ──
+  @@index([tagGroupId], map: "idx_tag_tag_group_id")
+  @@index([name], map: "idx_tag_name")
+  @@map("tag")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.8  VideoTag  (junction: Video <-> Tag)
+// ─────────────────────────────────────────────────────────────
+
+model VideoTag {
+  videoId   String   @map("video_id") @db.Uuid
+  tagId     String   @map("tag_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  // ── Composite Primary Key ──
+  @@id([videoId, tagId])
+
+  // ── Indexes ──
+  @@index([tagId], map: "idx_video_tag_tag_id")
+  @@map("video_tag")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.9  VideoModel  (junction: Video <-> Model)
+// ─────────────────────────────────────────────────────────────
+
+model VideoModel {
+  videoId   String  @map("video_id") @db.Uuid
+  modelId   String  @map("model_id") @db.Uuid
+  role      String? @db.VarChar(50)
+  sortOrder Int     @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  model Model @relation(fields: [modelId], references: [id], onDelete: Restrict)
+
+  // ── Composite Primary Key ──
+  @@id([videoId, modelId])
+
+  // ── Indexes ──
+  @@index([modelId], map: "idx_video_model_model_id")
+  @@map("video_model")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.10  Advertisement
+// ─────────────────────────────────────────────────────────────
+
+model Advertisement {
+  id                String    @id @default(uuid()) @db.Uuid
+  videoId           String    @map("video_id") @db.Uuid
+  title             String    @db.VarChar(255)
+  adType            AdType    @map("ad_type")
+  targetUrl         String    @map("target_url") @db.VarChar(500)
+  mediaUrl          String?   @map("media_url") @db.VarChar(500)
+  durationSeconds   Int?      @map("duration_seconds")
+  startTimeSeconds  Int?      @map("start_time_seconds")
+  maxImpressions    Int?      @map("max_impressions")
+  maxClicks         Int?      @map("max_clicks")
+  budgetCents       Int?      @map("budget_cents")
+  status            AdStatus  @default(active)
+  startsAt          DateTime? @map("starts_at") @db.Timestamptz()
+  endsAt            DateTime? @map("ends_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  video    Video               @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  stats    AdvertisementStats?
+
+  // ── Indexes ──
+  @@index([videoId], map: "idx_ad_video_id")
+  @@index([status, startsAt], map: "idx_ad_status_starts_at")
+  @@index([adType], map: "idx_ad_type")
+  @@map("advertisement")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.11  AdvertisementStats
+// ─────────────────────────────────────────────────────────────
+
+model AdvertisementStats {
+  id                String   @id @default(uuid()) @db.Uuid
+  advertisementId   String   @unique @map("advertisement_id") @db.Uuid
+  impressionCount   Int      @default(0) @map("impression_count")
+  clickCount        Int      @default(0) @map("click_count")
+  ctr               Decimal  @default(0) @db.Decimal(8, 6)
+  spentCents        Int      @default(0) @map("spent_cents")
+  lastImpressionAt  DateTime? @map("last_impression_at") @db.Timestamptz()
+  lastClickAt       DateTime? @map("last_click_at") @db.Timestamptz()
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+
+  // ── Indexes ──
+  @@index([advertisementId], map: "idx_ad_stats_ad_id")
+  @@map("advertisement_stats")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.12  VideoView  (high-volume, candidate for partitioning)
+// ─────────────────────────────────────────────────────────────
+
+model VideoView {
+  id                    BigInt   @id @default(autoincrement())
+  videoId               String   @map("video_id") @db.Uuid
+  userId                String?  @map("user_id") @db.Uuid
+  ipAddress             String?  @map("ip_address") // INET mapped to String for Prisma compatibility
+  userAgent             String?  @map("user_agent") @db.Text
+  watchDurationSeconds  Int      @default(0) @map("watch_duration_seconds")
+  completed             Boolean  @default(false)
+  referrer              String?  @db.VarChar(500)
+  sessionId             String?  @map("session_id") @db.VarChar(100)
+  viewedAt              DateTime @default(now()) @map("viewed_at") @db.Timestamptz()
+
+  // Relations
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // ── Indexes ──
+  @@index([videoId], map: "idx_video_view_video_id")
+  @@index([userId], map: "idx_video_view_user_id")
+  @@index([viewedAt], map: "idx_video_view_viewed_at")
+  @@index([videoId, viewedAt], map: "idx_video_view_video_viewed_at")
+  @@index([sessionId], map: "idx_video_view_session")
+  @@map("video_view")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.13  SearchQuery  (high-volume)
+// ─────────────────────────────────────────────────────────────
+
+model SearchQuery {
+  id              BigInt   @id @default(autoincrement())
+  userId          String?  @map("user_id") @db.Uuid
+  queryText       String   @map("query_text") @db.Text
+  filtersJson     Json?    @map("filters_json") @db.JsonB
+  resultCount     Int      @default(0) @map("result_count")
+  clickedVideoId  String?  @map("clicked_video_id") @db.Uuid
+  clickPosition   Int?     @map("click_position")
+  sessionId       String?  @map("session_id") @db.VarChar(100)
+  searchedAt      DateTime @default(now()) @map("searched_at") @db.Timestamptz()
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // ── Indexes ──
+  @@index([userId], map: "idx_search_query_user_id")
+  @@index([searchedAt], map: "idx_search_query_searched_at")
+  @@index([sessionId], map: "idx_search_query_session")
+  @@index([queryText], map: "idx_search_query_text")
+  @@map("search_query")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.14  Report
+// ─────────────────────────────────────────────────────────────
+
+model Report {
+  id              String       @id @default(uuid()) @db.Uuid
+  reporterId      String?      @map("reporter_id") @db.Uuid
+  videoId         String       @map("video_id") @db.Uuid
+  reason          ReportReason
+  description     String?      @db.Text
+  status          ReportStatus @default(pending)
+  moderatorNotes  String?      @map("moderator_notes") @db.Text
+  resolvedAt      DateTime?    @map("resolved_at") @db.Timestamptz()
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  reporter          User?              @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  video             Video              @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  moderatorActions  ModeratorAction[]
+
+  // ── Indexes ──
+  @@index([status], map: "idx_report_status")
+  @@index([reporterId], map: "idx_report_reporter_id")
+  @@index([videoId], map: "idx_report_video_id")
+  @@index([status, createdAt], map: "idx_report_status_created")
+  @@map("report")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.15  ModeratorAction
+// ─────────────────────────────────────────────────────────────
+
+model ModeratorAction {
+  id            String               @id @default(uuid()) @db.Uuid
+  moderatorId   String?              @map("moderator_id") @db.Uuid
+  reportId      String?              @map("report_id") @db.Uuid
+  videoId       String?              @map("video_id") @db.Uuid
+  affectedUserId String?             @map("user_id") @db.Uuid
+  actionType    ModeratorActionType  @map("action_type")
+  reason        String?              @db.Text
+  detailsJson   Json?                @map("details_json") @db.JsonB
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  moderator      User?  @relation("Moderator", fields: [moderatorId], references: [id], onDelete: SetNull)
+  report         Report? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  video          Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  affectedUser   User?   @relation("AffectedUser", fields: [affectedUserId], references: [id], onDelete: SetNull)
+
+  // ── Indexes ──
+  @@index([moderatorId], map: "idx_mod_action_moderator_id")
+  @@index([reportId], map: "idx_mod_action_report_id")
+  @@index([videoId], map: "idx_mod_action_video_id")
+  @@index([affectedUserId], map: "idx_mod_action_user_id")
+  @@index([createdAt], map: "idx_mod_action_created_at")
+  @@map("moderator_action")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.16  Favorite  (junction: User <-> Video)
+// ─────────────────────────────────────────────────────────────
+
+model Favorite {
+  userId    String   @map("user_id") @db.Uuid
+  videoId   String   @map("video_id") @db.Uuid
+  note      String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  // ── Composite Primary Key ──
+  @@id([userId, videoId])
+
+  // ── Indexes ──
+  @@index([videoId], map: "idx_favorite_video_id")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_favorite_user_created")
+  @@map("favorite")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.17  WatchHistory
+// ─────────────────────────────────────────────────────────────
+
+model WatchHistory {
+  id                 BigInt   @id @default(autoincrement())
+  userId             String   @map("user_id") @db.Uuid
+  videoId            String   @map("video_id") @db.Uuid
+  progressSeconds    Int      @default(0) @map("progress_seconds")
+  completed          Boolean  @default(false)
+  watchCount         Int      @default(1) @map("watch_count")
+  lastWatchedAt      DateTime @default(now()) @map("last_watched_at") @db.Timestamptz()
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  // ── Constraints & Indexes ──
+  @@unique([userId, videoId], name: "uq_watch_history_user_video")
+  @@index([userId], map: "idx_watch_history_user_id")
+  @@index([videoId], map: "idx_watch_history_video_id")
+  @@index([userId, lastWatchedAt(sort: Desc)], map: "idx_watch_history_user_last_watched")
+  @@index([userId, progressSeconds], map: "idx_watch_history_user_progress")
+  @@map("watch_history")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.18  Collection
+// ─────────────────────────────────────────────────────────────
+
+model Collection {
+  id            String    @id @default(uuid()) @db.Uuid
+  title         String    @db.VarChar(255)
+  slug          String    @unique @db.VarChar(300)
+  description   String?   @db.Text
+  coverImageUrl String?   @map("cover_image_url") @db.VarChar(500)
+  sortOrder     Int       @default(0) @map("sort_order")
+  isFeatured    Boolean   @default(false) @map("is_featured")
+  isPublished   Boolean   @default(false) @map("is_published")
+  videoCount    Int       @default(0) @map("video_count")
+  performerCount Int      @default(0) @map("performer_count")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  collectionVideos CollectionVideo[]
+  collectionModels CollectionModel[]
+
+  // ── Indexes ──
+  @@index([isPublished, sortOrder], map: "idx_collection_published_sort")
+  @@index([isFeatured], map: "idx_collection_featured")
+  @@index([slug], map: "idx_collection_slug")
+  @@map("collection")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.19  CollectionVideo  (junction: Collection <-> Video)
+// ─────────────────────────────────────────────────────────────
+
+model CollectionVideo {
+  collectionId String   @map("collection_id") @db.Uuid
+  videoId      String   @map("video_id") @db.Uuid
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  video      Video      @relation(fields: [videoId], references: [id], onDelete: Restrict)
+
+  // ── Composite Primary Key ──
+  @@id([collectionId, videoId])
+
+  // ── Indexes ──
+  @@index([videoId], map: "idx_collection_video_video_id")
+  @@index([collectionId, sortOrder], map: "idx_collection_video_sort")
+  @@map("collection_video")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.20  CollectionModel  (junction: Collection <-> Model)
+// ─────────────────────────────────────────────────────────────
+
+model CollectionModel {
+  collectionId String   @map("collection_id") @db.Uuid
+  modelId      String   @map("model_id") @db.Uuid
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  model      Model      @relation(fields: [modelId], references: [id], onDelete: Restrict)
+
+  // ── Composite Primary Key ──
+  @@id([collectionId, modelId])
+
+  // ── Indexes ──
+  @@index([modelId], map: "idx_collection_model_model_id")
+  @@map("collection_model")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.21  ActivityLog
+// ─────────────────────────────────────────────────────────────
+
+enum ActivityEntityType {
+  performer
+  video
+  tag
+  collection
+  media
+  user
+}
+
+model ActivityLog {
+  id          String              @id @default(uuid()) @db.Uuid
+  entityType  ActivityEntityType  @map("entity_type")
+  entityId    String              @map("entity_id") @db.VarChar(100)
+  action      String              @db.VarChar(50)
+  description String              @db.Text
+  userId      String?             @map("user_id") @db.Uuid
+  metadata    Json?               @db.JsonB
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // ── Indexes ──
+  @@index([createdAt(sort: Desc)], map: "idx_activity_log_created_at")
+  @@index([entityType, entityId], map: "idx_activity_log_entity")
+  @@index([userId], map: "idx_activity_log_user_id")
+  @@map("activity_log")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.22  MediaAsset
+// ─────────────────────────────────────────────────────────────
+
+model MediaAsset {
+  id            String    @id @default(uuid()) @db.Uuid
+  videoId       String    @map("video_id") @db.Uuid
+  assetType     AssetType @map("asset_type")
+  fileName      String    @map("file_name") @db.VarChar(500)
+  mimeType      String    @map("mime_type") @db.VarChar(50)
+  fileSize      BigInt    @map("file_size")
+  storageKey    String    @map("storage_key") @db.VarChar(500)
+  storageProvider String  @default("r2") @map("storage_provider") @db.VarChar(50)
+  width         Int?
+  height        Int?
+  duration      Decimal?  @db.Decimal(10, 3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  // ── Indexes ──
+  @@index([videoId], map: "idx_media_asset_video_id")
+  @@index([videoId, assetType], map: "idx_media_asset_video_type")
+  @@index([storageKey], map: "idx_media_asset_storage_key")
+  @@map("media_asset")
+}

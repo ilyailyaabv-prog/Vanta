@@ -1,0 +1,265 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────
+ * Vanta — Design System & Global Styles
+ * Dark graphite theme with copper accents.
+ * Apple-level visual cleanliness.
+ * ───────────────────────────────────────────── */
+
+@theme {
+  /* ── Core Colors ── */
+  --color-background: hsl(0 0% 4%);
+  --color-foreground: hsl(0 0% 95%);
+
+  --color-card: hsl(0 0% 7%);
+  --color-card-hover: hsl(0 0% 10%);
+  --color-card-foreground: hsl(0 0% 95%);
+
+  --color-copper: hsl(30 58% 50%);
+  --color-copper-light: hsl(30 58% 60%);
+  --color-copper-dark: hsl(30 58% 40%);
+  --color-copper-foreground: hsl(0 0% 100%);
+  --color-copper-subtle: hsl(30 58% 50% / 0.12);
+
+  --color-popover: hsl(0 0% 7%);
+  --color-popover-foreground: hsl(0 0% 95%);
+
+  --color-primary: hsl(0 0% 95%);
+  --color-primary-foreground: hsl(0 0% 9%);
+
+  --color-secondary: hsl(0 0% 13%);
+  --color-secondary-foreground: hsl(0 0% 95%);
+
+  --color-muted: hsl(0 0% 13%);
+  --color-muted-foreground: hsl(0 0% 55%);
+
+  --color-accent: hsl(0 0% 13%);
+  --color-accent-foreground: hsl(0 0% 95%);
+
+  --color-destructive: hsl(0 62% 30%);
+  --color-destructive-foreground: hsl(0 0% 95%);
+
+  --color-border: hsl(0 0% 13%);
+  --color-border-light: hsl(0 0% 10%);
+  --color-input: hsl(0 0% 13%);
+  --color-ring: hsl(30 58% 50%);
+
+  --color-sidebar: hsl(0 0% 6%);
+  --color-sidebar-foreground: hsl(0 0% 90%);
+  --color-sidebar-accent: hsl(0 0% 12%);
+  --color-sidebar-accent-foreground: hsl(0 0% 95%);
+  --color-sidebar-border: hsl(0 0% 12%);
+
+  --color-success: hsl(142 70% 45%);
+  --color-success-subtle: hsl(142 70% 45% / 0.12);
+  --color-warning: hsl(38 92% 50%);
+  --color-warning-subtle: hsl(38 92% 50% / 0.12);
+
+  /* ── Border Radius ── */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  /* ── Fonts ── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* ── Animations ── */
+  --animate-fade-in: fade-in 0.6s ease-out;
+  --animate-fade-in-up: fade-in-up 0.5s ease-out;
+  --animate-slide-down: slide-down 0.3s ease-out;
+}
+
+/* ── Base Layer ── */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  /* ── Scrollbar Styling ── */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(0 0% 20%);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(0 0% 30%);
+  }
+
+  /* ── Selection ── */
+  ::selection {
+    background-color: var(--color-copper);
+    color: var(--color-copper-foreground);
+  }
+
+  /* ── Focus Ring ── */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* ── Component Layer ── */
+@layer components {
+  /* Glass morphism utility */
+  .glass {
+    background-color: hsl(0 0% 4% / 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Category nav fade edges */
+  .category-fade-left::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    background: linear-gradient(to right, hsl(0 0% 4%), transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .category-fade-right::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    background: linear-gradient(to left, hsl(0 0% 4%), transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Video card hover effect */
+  .video-card-shadow {
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.3s ease;
+  }
+
+  .video-card-shadow:hover {
+    box-shadow: 0 0 0 1px hsl(30 58% 50% / 0.2), 0 8px 32px hsl(0 0% 0% / 0.4);
+  }
+
+  /* Line clamp for text */
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* ── Utility Layer ── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── Keyframes ── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(30 58% 50% / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px hsl(30 58% 50% / 0);
+  }
+}
